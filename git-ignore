@@ -1,0 +1,143 @@
+#!/usr/bin/env python3
+
+from datetime import datetime
+import subprocess
+import requests
+import argparse
+import pathlib
+import sys
+import re
+
+url_base = "http://gitignore.io/api/"
+
+submodule_command = ['git', 'rev-parse', '--show-superproject-working-tree']
+toplevel_command = ['git', 'rev-parse', '--show-toplevel']
+
+def find_gitignore():
+    # which on Linux, where on Windows
+    if (subprocess.call(['which', 'git'], stdout=subprocess.PIPE) != 0 &&
+        subprocess.call(['where.exe', 'git'], stdout=subprocess.PIPE) != 0):
+        print("Unable to find 'git' command. Is git installed and on your path?", file=sys.stderr)
+        sys.exit(1)
+    path = None
+    try:
+        path = subprocess.check_output(submodule_command, stderr=subprocess.PIPE)
+    except subprocess.CalledProcessError:
+        pass
+    if not path:
+        try:
+            path = subprocess.check_output(toplevel_command, stderr=subprocess.PIPE)
+        except subprocess.CalledProcessError:
+            pass
+    if not path:
+        return
+
+    return pathlib.Path(path.decode('utf-8').strip()) / '.gitignore'
+    
+
+def get_language_list():
+    req = requests.get(url_base + 'list')
+    return req.text.split(',')
+
+
+def get_languages(languages):
+    lang_str = ','.join(languages).lower().replace('/', '')
+    req = requests.get(url_base + lang_str)
+    return req.text.splitlines()
+
+def main(list_languages, output_file, languages_to_append, find_gitignore_flag):
+    if find_gitignore_flag:
+        path = find_gitignore()
+        if path and path.is_file():
+            print(path)
+        return
+
+    if list_languages is not None:
+        if len(list_languages) > 0:
+            for line in get_languages(list_languages):
+                print(line)
+            return
+        langs = get_language_list()
+        for lang in langs:
+            print(lang)
+        return
+
+
+    if output_file is None:
+        output_file = find_gitignore()
+        if output_file is None:
+            print("Unable to find the git root directory. Either you are not "
+                "in a git tree, or you will need to explicitly specify the "
+                "the .gitignore path and filename with --file", file=sys.stderr)
+            sys.exit(1)
+
+    if not output_file.parent.exists():
+        print(f"Parent directory {output_file.parent} does not exist. Unable "
+               "to create or show .gitignore.", file=sys.stderr)
+        sys.exit(1)
+
+    if not list_languages and not languages_to_append:
+        if not output_file.is_file():
+            print(f'# Cannot find gitignore file {output_file}')
+            sys.exit(1)
+        with output_file.open('r') as f:
+            print(f'# Displaying contents of file {output_file}')
+            for line in f.readlines():
+                print(line, end='')
+        return
+
+    errors = []
+    with output_file.open('a+') as f:
+        f.seek(0)
+        existing_lines = set()
+        pending_comments = []
+        for line in f.readlines():
+            existing_lines.add(line.strip())
+         
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        f.write(f'\n# Appended on {now}\n#################################\n')
+        for line in get_languages(languages_to_append):
+            # write all comment and blank lines, but ignore duplicates othewise
+            if line and not line.startswith('#') and line in existing_lines:
+                continue
+
+            if line.startswith('#!! ERROR: '):
+                errors.append(line)
+
+            if line.startswith('###'):
+                pending_comments.append(line)
+                continue
+
+            # clear the comment block - all directives were duplicates
+            if not line and pending_comments:
+                pending_comments.clear()
+
+            # we're printing a new directive. Print any pending comments first.
+            for comment in pending_comments:
+                f.write(comment)
+                f.write('\n')
+            pending_comments.clear()
+
+            f.write(line)
+            f.write('\n')
+
+    for err in errors:
+        print(err, file=sys.stderr)
+    
+    
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--list', nargs='*', default=None,
+                        help="List gitignore configurations for the provided "
+                             "languages. If no languages provided, list "
+                             "the language names supported by gitignore.io.")
+    parser.add_argument('-f', '--file', type=pathlib.Path,
+                        help="Override the gitignore output filename.")
+    parser.add_argument('--find', action='store_true',
+                        help="Override the gitignore output filename.")
+    parser.add_argument('-a', '--append', metavar='L', nargs='+',
+                        help="Languages to append to the gitignore file")
+
+    args = parser.parse_args()
+    main(args.list, args.file, args.append, args.find)
