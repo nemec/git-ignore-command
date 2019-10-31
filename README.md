@@ -122,3 +122,26 @@ still is sensible.
 ```bash
 git ignore -a c++ python
 ```
+
+If you wish to override the default destination of the gitignore file when
+appending, add the argument `-f` or `--file`. This argument removes the need
+to run the command from within a git repository.
+
+```bash
+git ignore -a code -f ~/prg/py/.gitignore
+```
+
+### Display the contents of the gitignore file in the terminal
+
+This is generally a shortcut equivalent to `cat`ing the result of `git ignore --find`.
+
+```bash
+git ignore
+```
+
+If you wish to override the default destination of the gitignore file when
+appending, add the argument `-f` or `--file`. This argument removes the need
+to run the command from within a git repository.
+
+```bash
+git ignore -f ~/prg/py/.gitignore
