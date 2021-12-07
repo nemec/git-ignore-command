@@ -2,10 +2,12 @@
 
 from datetime import datetime
 import subprocess
+from typing import List
 import requests
 import argparse
 import pathlib
 import sys
+import os
 import re
 
 url_base = "http://gitignore.io/api/"
@@ -15,7 +17,7 @@ toplevel_command = ['git', 'rev-parse', '--show-toplevel']
 
 def find_gitignore():
     # which on Linux, where on Windows
-    if (subprocess.call(['which', 'git'], stdout=subprocess.PIPE) != 0 &&
+    if (subprocess.call(['which', 'git'], stdout=subprocess.PIPE) != 0 and
         subprocess.call(['where.exe', 'git'], stdout=subprocess.PIPE) != 0):
         print("Unable to find 'git' command. Is git installed and on your path?", file=sys.stderr)
         sys.exit(1)
@@ -45,11 +47,30 @@ def get_languages(languages):
     req = requests.get(url_base + lang_str)
     return req.text.splitlines()
 
-def main(list_languages, output_file, languages_to_append, find_gitignore_flag):
+def main(
+        list_languages: List[str],
+        output_file: pathlib.Path,
+        languages_to_append: List[str],
+        find_gitignore_flag: bool,
+        edit_gitignore_file_flag: bool):
     if find_gitignore_flag:
         path = find_gitignore()
         if path and path.is_file():
             print(path)
+        else:
+            print("Unable to find gitignore file.", file=sys.stderr)
+        return
+
+    if edit_gitignore_file_flag:
+        path = find_gitignore()
+        if path and path.is_file():
+            if 'EDITOR' in os.environ:
+                editor = os.environ['EDITOR']
+            else:
+                editor = 'xdg-open'
+            subprocess.call([editor, path])
+        else:
+            print("Unable to find gitignore file.", file=sys.stderr)
         return
 
     if list_languages is not None:
@@ -61,7 +82,6 @@ def main(list_languages, output_file, languages_to_append, find_gitignore_flag):
         for lang in langs:
             print(lang)
         return
-
 
     if output_file is None:
         output_file = find_gitignore()
@@ -138,6 +158,9 @@ if __name__ == "__main__":
                         help="Override the gitignore output filename.")
     parser.add_argument('-a', '--append', metavar='L', nargs='+',
                         help="Languages to append to the gitignore file")
+    parser.add_argument('--edit', action='store_true',
+                        help="Edit the configuration file in $EDITOR or "
+                             "your default text program.")
 
     args = parser.parse_args()
-    main(args.list, args.file, args.append, args.find)
+    main(args.list, args.file, args.append, args.find, args.edit)
