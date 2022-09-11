@@ -3,14 +3,13 @@
 from datetime import datetime
 import subprocess
 from typing import List
-import requests
+import urllib.request
 import argparse
 import pathlib
 import sys
 import os
-import re
 
-url_base = "http://gitignore.io/api/"
+url_base = "https://www.toptal.com/developers/gitignore/api/"
 
 submodule_command = ['git', 'rev-parse', '--show-superproject-working-tree']
 toplevel_command = ['git', 'rev-parse', '--show-toplevel']
@@ -38,14 +37,20 @@ def find_gitignore():
     
 
 def get_language_list():
-    req = requests.get(url_base + 'list')
-    return req.text.split(',')
+    req = urllib.request.Request(url_base + 'list', headers={
+        "User-Agent": "git-ignore script v1.2"
+    })
+    with urllib.request.urlopen(req) as f:
+        return f.read().decode('utf-8').split(',')
 
 
 def get_languages(languages):
     lang_str = ','.join(languages).lower().replace('/', '')
-    req = requests.get(url_base + lang_str)
-    return req.text.splitlines()
+    req = urllib.request.Request(url_base + lang_str, headers={
+        "User-Agent": "git-ignore script v1.2"
+    })
+    with urllib.request.urlopen(req) as f:
+        return f.read().decode('utf-8').splitlines()
 
 def main(
         list_languages: List[str],
